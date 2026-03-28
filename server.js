@@ -15,56 +15,74 @@ app.get("/", (req, res) => {
 // ✅ MEWS API
 app.post("/predict-mews", (req, res) => {
 
-    const { rr, spo2, pulse, bp, temp, conscious } = req.body;
+const { rr, spo2, pulse, bp, temp, conscious } = req.body;
 
-    let score = 0;
-    let reasons = [];
+let score = 0;
+let reasons = [];
 
-    // Respiratory Rate
-    if (rr > 30 || rr < 8) { score += 3; reasons.push("Abnormal respiratory rate"); }
-    else if (rr > 24) { score += 2; }
+// ✅ Respiratory Rate
+if (rr >= 30) { score += 3; reasons.push("High RR"); }
+else if (rr >= 21) { score += 2; }
+else if (rr >= 12) { score += 0; }
+else if (rr >= 9) { score += 2; }
+else { score += 3; reasons.push("Critical RR"); }
 
-    // SpO2
-    if (spo2 < 90) { score += 3; reasons.push("Severe hypoxia"); }
-    else if (spo2 < 94) { score += 2; }
-    else if (spo2 < 96) { score += 1; }
+// ✅ SpO2
+if (spo2 <= 90) { score += 3; reasons.push("Severe hypoxia"); }
+else if (spo2 <= 93) { score += 2; }
+else if (spo2 <= 95) { score += 1; }
+else { score += 0; }
 
-    // Pulse
-    if (pulse > 130 || pulse < 40) { score += 3; reasons.push("Critical heart rate"); }
-    else if (pulse > 110) { score += 2; }
-    else if (pulse > 90) { score += 1; }
+// ✅ Pulse
+if (pulse > 130) { score += 3; reasons.push("Critical pulse"); }
+else if (pulse >= 111) { score += 2; }
+else if (pulse >= 91) { score += 1; }
+else if (pulse >= 51) { score += 0; }
+else if (pulse >= 41) { score += 2; }
+else { score += 3; }
 
-    // BP
-    if (bp < 90) { score += 2; reasons.push("Low blood pressure"); }
+// ✅ Blood Pressure
+if (bp >= 220) { score += 3; }
+else if (bp >= 100) { score += 0; }
+else if (bp >= 90) { score += 2; }
+else if (bp >= 80) { score += 2; }
+else { score += 3; reasons.push("Critical BP"); }
 
-    // Temperature
-    if (temp > 38) { score += 1; reasons.push("Fever"); }
-    if (temp < 35) { score += 2; reasons.push("Hypothermia"); }
+// ✅ Temperature
+if (temp > 40) { score += 3; }
+else if (temp >= 38) { score += 2; }
+else if (temp >= 37) { score += 0; }
+else if (temp >= 35) { score += 1; }
+else { score += 2; }
 
-    // Consciousness
-    if (conscious !== "A") { score += 2; reasons.push("Reduced consciousness"); }
+// ✅ Consciousness
+if (conscious === "A") score += 0;
+else if (conscious === "V") score += 1;
+else if (conscious === "P") score += 2;
+else score += 3;
 
-    let risk = "NORMAL";
-    let action = "Routine monitoring";
+// ✅ Risk Levels (from PDF)
+let risk = "NORMAL";
+let action = "Routine monitoring";
 
-    if (score >= 7) {
-        risk = "HIGH";
-        action = "URGENT: Immediate medical attention";
-    } else if (score >= 5) {
-        risk = "MEDIUM";
-        action = "Close monitoring required";
-    } else if (score >= 1) {
-        risk = "LOW";
-        action = "Observe patient";
-    }
+if (score >= 7) {
+risk = "HIGH";
+action = "Emergency response (ICU / MET)";
+} else if (score >= 5) {
+risk = "MEDIUM";
+action = "Urgent doctor review";
+} else if (score >= 1) {
+risk = "LOW";
+action = "Increase monitoring";
+}
 
-    res.json({
-        reply: `Risk: ${risk}
+res.json({
+reply: `Risk: ${risk}
 Score: ${score}
 Reason: ${reasons.join(", ") || "Vitals normal"}
 Action: ${action}`,
-        score: score
-    });
+score: score
+});
 
 });
 
