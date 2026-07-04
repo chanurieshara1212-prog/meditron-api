@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Medication & MEWS</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+    margin:0;
+    font-family:'Segoe UI',sans-serif;
+    background:linear-gradient(135deg,#667eea,#764ba2);
+    padding:20px;
+    color:white;
+}
+.container{
+    background:rgba(255,255,255,0.1);
+    backdrop-filter:blur(15px);
+    border-radius:20px;
+    padding:20px;
+}
+.inputGroup{
+    display:flex;
+    align-items:center;
+    gap:5px;
+}
+.unit{
+    font-size:12px;
+    opacity:0.8;
+}
+input,select{
+    padding:10px;
+    width:180px;
+    border-radius:8px;
+    border:none;
+    margin:5px;
+}
+button{
+    padding:10px;
+    background:#00c6ff;
+    color:white;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+}
+.medCard{
+    background:white;
+    color:black;
+    padding:12px;
+    border-radius:12px;
+    margin:8px 0;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+}
+.medName{
+    font-weight:bold;
+    width:150px;
+}
+.timing{
+    display:flex;
+    gap:10px;
+}
+.box{
+    background:white;
+    color:black;
+    padding:10px;
+    border-radius:10px;
+    margin:10px 0;
+}
+canvas{
+    background:white;
+    border-radius:10px;
+    padding:10px;
+}
+textarea{
+    border-radius:10px;
+    padding:10px;
+    border:none;
+}
+
+.dynamicRow{
+    background:white;
+    color:black;
+    padding:10px;
+    border-radius:10px;
+    margin:5px 0;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Patient Monitoring</h2>
+
+<div class="container">
+
+<h3>MEWS Observation</h3>
+
+<div class="inputGroup">
+<input type="number" id="rr" placeholder="Respiratory Rate">
+<span class="unit">breaths/min</span>
+</div>
+
+<div class="inputGroup">
+<input type="number" id="spo2" placeholder="SpO2">
+<span class="unit">%</span>
+</div>
+
+<div class="inputGroup">
+<input type="number" id="pulse" placeholder="Pulse">
+<span class="unit">bpm</span>
+</div>
+
+<br>
+
+<div class="inputGroup">
+<input type="number" id="bp" placeholder="BP">
+<span class="unit">mmHg</span>
+</div>
+
+<div class="inputGroup">
+<input type="number" id="temp" placeholder="Temperature">
+<span class="unit">°C</span>
+</div>
+
+<select id="conscious">
+<option value="A">Alert</option>
+<option value="V">Voice</option>
+<option value="P">Pain</option>
+<option value="U">Unresponsive</option>
+</select><br><br>
+
+<button onclick="calculateMEWS()">Check & Save</button>
+
+<textarea id="result" rows="5" style="width:100%; margin-top:10px;" placeholder="AI Result"></textarea>
+
+<hr>
+
+<h3>MEWS Trend</h3>
+<canvas id="mewsChart"></canvas>
+
+<hr>
+
+<h3>Medications</h3>
+<div id="medTable"></div>
+
+<h4>Add Custom Medication</h4>
+<div id="dynamicMeds"></div>
+<button onclick="addDynamicMed()">+ Add Medication</button>
+
+<br><br>
+
+<h4>Additional Notes</h4>
+<textarea id="customNote" rows="3" style="width:100%;"></textarea>
+
+<br><br>
+<button onclick="saveMeds()">Save Medications</button>
+
+<hr>
+
+<h3>Previous Prescriptions</h3>
+<div id="previousPrescription"></div>
+
+</div>
+
+<script>
+
+const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "meditronbyneomedix.firebaseapp.com",
+  projectId: "meditronbyneomedix"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const patientId = new URLSearchParams(window.location.search).get("id");
+
+let chart;
+
+const meds = [
+"Metformin","Empagliflozin","Gliclazide","Losartan",
+"Aspirin","Atorvastatin","Co-amoxicillin",
+"Paracetamol","Clopidogrel","Bisoprolol"
+];
+
+async function calculateMEWS(){
+
+    let rr = +document.getElementById("rr").value;
+    let spo2 = +document.getElementById("spo2").value;
+    let pulse = +document.getElementById("pulse").value;
+    let bp = +document.getElementById("bp").value;
+    let temp = +document.getElementById("temp").value;
+    let conscious = document.getElementById("conscious").value;
+
+    if(!patientId){
+        alert("Patient ID missing in URL");
+        return;
+    }
+
+    let result = calculateScoreAndRecommendation(rr, spo2, pulse, bp, temp, conscious);
+
+    document.getElementById("result").value = result.reply;
+
+    let docRef = db.collection("patients").doc(patientId);
+    let docSnap = await docRef.get();
+
+    let existing = docSnap.data()?.mews || {};
+    let ts = new Date().toISOString();
+
+    existing[ts] = {
+        rr,
+        spo2,
+        pulse,
+        bp,
+        temp,
+        conscious,
+        ai: result.reply,
+        score: result.score
+    };
+
+    await docRef.set({ mews: existing }, { merge:true });
+
+    loadMewsChart();
+}
+
+function calculateScoreAndRecommendation(rr, spo2, pulse, bp, temp, conscious){
+
+    let score = 0;
+    let reasons = [];
+    let hasCriticalParameter = false;
+
+    if(rr >= 30){
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Critically high respiratory rate");
+    }
+    else if(rr >= 21){
+        score += 2;
+        reasons.push("High respiratory rate");
+    }
+    else if(rr >= 12){
+        score += 0;
+    }
+    else if(rr >= 9){
+        score += 2;
+        reasons.push("Low respiratory rate");
+    }
+    else{
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Critically low respiratory rate");
+    }
+
+    if(spo2 <= 90){
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Severe hypoxia");
+    }
+    else if(spo2 <= 93){
+        score += 2;
+        reasons.push("Low oxygen saturation");
+    }
+    else if(spo2 <= 95){
+        score += 1;
+        reasons.push("Slightly reduced oxygen saturation");
+    }
+
+    if(pulse > 130){
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Critically high pulse");
+    }
+    else if(pulse >= 111){
+        score += 2;
+        reasons.push("High pulse");
+    }
+    else if(pulse >= 91){
+        score += 1;
+    }
+    else if(pulse >= 51){
+        score += 0;
+    }
+    else if(pulse >= 41){
+        score += 2;
+        reasons.push("Low pulse");
+    }
+    else{
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Critically low pulse");
+    }
+
+    if(bp >= 220){
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Very high blood pressure");
+    }
+    else if(bp >= 100){
+        score += 0;
+    }
+    else if(bp >= 80){
+        score += 2;
+        reasons.push("Low blood pressure");
+    }
+    else{
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Critically low blood pressure");
+    }
+
+    if(temp > 40){
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Very high temperature");
+    }
+    else if(temp >= 38){
+        score += 2;
+        reasons.push("Fever");
+    }
+    else if(temp >= 37){
+        score += 0;
+    }
+    else if(temp >= 35){
+        score += 1;
+    }
+    else{
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Hypothermia");
+    }
+
+    if(conscious=="A"){
+        score += 0;
+    }
+    else if(conscious=="V"){
+        score += 1;
+        reasons.push("Responds to voice");
+    }
+    else if(conscious=="P"){
+        score += 2;
+        reasons.push("Responds to pain");
+    }
+    else{
+        score += 3;
+        hasCriticalParameter = true;
+        reasons.push("Unresponsive");
+    }
+
+    let risk="";
+    let monitoring="";
+    let action="";
+
+    if(score==0){
+        risk="NORMAL";
+        monitoring="Every 8 hours";
+        action="Routine monitoring.";
+    }
+    else if(score>=7){
+        risk="HIGH";
+        monitoring="Continuous";
+        action="Immediate medical review. Call MET/ICU team. Inform consultant. Consider transfer to HDU/ICU.";
+    }
+    else if(score>=5){
+        risk="MEDIUM";
+        monitoring="Every 1 hour";
+        action="Urgent review by Senior Medical Officer/Consultant within 30 minutes. Arrange HDU bed.";
+    }
+    else if(hasCriticalParameter){
+        risk="LOW-MEDIUM";
+        monitoring="Every 1 hour";
+        action="One parameter is critically abnormal. Inform Medical Officer immediately for urgent review.";
+    }
+    else{
+        risk="LOW";
+        monitoring="Every 4-6 hours";
+        action="Senior ward nurse review. Inform Medical Officer to review within 1 hour.";
+    }
+
+    return{
+        score:score,
+        reply:
+`CLINICAL DECISION SUPPORT
+
+MEWS Score : ${score}
+
+Risk Level : ${risk}
+
+Abnormal Findings :
+${reasons.length ? reasons.join(", ") : "No abnormal findings"}
+
+Monitoring :
+${monitoring}
+
+Recommended Action :
+${action}`
+    };
+}
+
+function loadMewsChart(){
+    db.collection("patients").doc(patientId).get().then(doc=>{
+        let data = doc.data()?.mews;
+        if(!data) return;
+
+        let labels=[], scores=[], colors=[];
+
+        Object.keys(data).sort().forEach(t=>{
+            let s = data[t].score || 0;
+            labels.push(new Date(t).toLocaleTimeString());
+            scores.push(s);
+
+            if(s>=7) colors.push("red");
+            else if(s>=5) colors.push("orange");
+            else if(s>=1) colors.push("yellow");
+            else colors.push("green");
+        });
+
+        if(chart) chart.destroy();
+
+        chart = new Chart(document.getElementById("mewsChart"),{
+            type:"line",
+            data:{ labels, datasets:[{ label:"MEWS Score", data:scores, borderColor:"blue", pointBackgroundColor:colors }] }
+        });
+    });
+}
+
+function createUI(){
+    let html="";
+    meds.forEach(m=>{
+        html+=`
+        <div class="medCard">
+            <div class="medName">${m}</div>
+            <div class="timing">
+                <label><input type="checkbox" id="${m}_OD"> OD</label>
+                <label><input type="checkbox" id="${m}_BD"> BD</label>
+                <label><input type="checkbox" id="${m}_TDS"> TDS</label>
+                <label><input type="checkbox" id="${m}_QDS"> QDS</label>
+            </div>
+            <input id="dose_${m}" placeholder="Dose">
+        </div>`;
+    });
+    medTable.innerHTML=html;
+}
+
+function addDynamicMed(){
+    let id = Date.now();
+    let html = `
+    <div class="dynamicRow" id="dyn_${id}">
+        <input placeholder="Medicine Name" id="name_${id}">
+        <input placeholder="Dose" id="dose_${id}">
+        <input placeholder="Timing (OD/BD/TDS)" id="time_${id}">
+    </div>`;
+    dynamicMeds.innerHTML += html;
+}
+
+function saveMeds(){
+
+    let data = {};
+    let ts = new Date().toISOString();
+
+    meds.forEach(m=>{
+        let timings=[];
+        if(document.getElementById(`${m}_OD`).checked) timings.push("OD");
+        if(document.getElementById(`${m}_BD`).checked) timings.push("BD");
+        if(document.getElementById(`${m}_TDS`).checked) timings.push("TDS");
+        if(document.getElementById(`${m}_QDS`).checked) timings.push("QDS");
+
+        let doseVal = document.getElementById(`dose_${m}`).value;
+        if(doseVal || timings.length) {
+            data[m] = {
+                dose: doseVal,
+                timing: timings.join(", ")
+            };
+        }
+    });
+
+    document.querySelectorAll(".dynamicRow").forEach(row=>{
+        let id = row.id.split("_")[1];
+        let name = document.getElementById(`name_${id}`).value;
+
+        if(name){
+            data[name] = {
+                dose: document.getElementById(`dose_${id}`).value,
+                timing: document.getElementById(`time_${id}`).value
+            };
+        }
+    });
+
+    let note = document.getElementById("customNote").value;
+    if(note){
+        data["Note"] = { note };
+    }
+
+    db.collection("patients").doc(patientId).get().then(doc=>{
+        let existing = doc.data()?.medications || {};
+        existing[ts] = data;
+
+        db.collection("patients").doc(patientId).set({ medications: existing }, { merge:true });
+
+        alert("Saved");
+        loadPrescriptions();
+    });
+}
+
+function loadPrescriptions(){
+    db.collection("patients").doc(patientId).get().then(doc=>{
+        let data = doc.data()?.medications;
+        if(!data){ previousPrescription.innerHTML="No records"; return; }
+
+        let html="";
+        for(let t in data){
+            html+=`<div class="box"><b>${t}</b><br>`;
+            let meds = data[t];
+
+            for(let m in meds){
+                if(meds[m].note){
+                    html+=`Note: ${meds[m].note}<br>`;
+                }else if(meds[m].dose || meds[m].timing){
+                    html+=`${m} → ${meds[m].dose || "-"} (${meds[m].timing || "-"})<br>`;
+                }
+            }
+
+            html+=`</div>`;
+        }
+
+        previousPrescription.innerHTML=html;
+    });
+}
+
+createUI();
+loadMewsChart();
+loadPrescriptions();
+
+</script>
+
+</body>
+</html>

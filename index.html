@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Meditron Login</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+<style>
+  
+@keyframes fadeIn{
+    from{
+        opacity:0;
+        transform:translateY(-20px);
+    }
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
+
+body{
+    margin:0;
+    font-family:'Segoe UI',sans-serif;
+    background:linear-gradient(135deg,#667eea,#764ba2);
+    height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+/* Glass container */
+.container{
+    display:flex;
+    width:850px;
+    height:480px;
+    border-radius:20px;
+    backdrop-filter: blur(15px);
+    background:rgba(255,255,255,0.1);
+    box-shadow:0 20px 40px rgba(0,0,0,0.3);
+    overflow:hidden;
+}
+
+/* LEFT PANEL */
+.left{
+    width:50%;
+    padding:50px;
+    color:white;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    background:rgba(0,0,0,0.2);
+}
+
+/* LOGO IMAGE */
+.logo-img{
+    width:120px;
+    margin-bottom:20px;
+    animation: fadeIn 1.5s ease-in-out;
+    filter: drop-shadow(0 0 10px rgba(0,255,255,0.6));
+}
+
+/* APP NAME */
+.logo-text{
+    font-size:28px;
+    font-weight:bold;
+}
+
+/* Meditron color */
+.logo-text span{
+    color:#00f2fe;
+}
+
+/* Neomedix color */
+.neomedix{
+    font-size:14px;
+    color:#ffcc70;
+    margin-left:5px;
+}
+
+/* RIGHT PANEL */
+.right{
+    width:50%;
+    padding:50px;
+    background:white;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+}
+
+.right h2{
+    margin-bottom:20px;
+}
+
+/* INPUT */
+input{
+    padding:12px;
+    margin:10px 0;
+    border-radius:8px;
+    border:1px solid #ccc;
+    font-size:14px;
+}
+
+/* BUTTON */
+button{
+    padding:12px;
+    margin-top:10px;
+    border:none;
+    border-radius:8px;
+    background:linear-gradient(135deg,#4facfe,#00f2fe);
+    color:white;
+    font-size:16px;
+    cursor:pointer;
+    transition:0.3s;
+}
+
+button:hover{
+    transform:scale(1.05);
+}
+
+.footer{
+    margin-top:15px;
+    font-size:12px;
+    color:#888;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- LEFT -->
+    <div class="left">
+
+        <!-- 🖼 YOUR LOGO -->
+        <img src="logo.png.jpg" class="logo-img">
+
+        <!-- TEXT LOGO -->
+        <div class="logo-text">
+            Medi<span>tron</span>
+            <span class="neomedix">by Neomedix</span>
+        </div>
+
+        <h1 id="greeting"></h1>
+        <p>
+            
+            Smart Healthcare System  
+            <br><br>
+            Manage patients, prescriptions, and ward operations with ease.
+        </p>
+
+    </div>
+
+    <!-- RIGHT -->
+    <div class="right">
+
+        <h2>Login</h2>
+
+        <input type="email" id="email" placeholder="Enter Email">
+        <input type="password" id="password" placeholder="Enter Password">
+
+        <button onclick="login()">Login</button>
+
+        <div class="footer">
+            © 2026 Meditron System
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB2CtjEUGBpdF6aXPl-7QNog3yL2kZffpg",
+  authDomain: "meditronbyneomedix.firebaseapp.com",
+  projectId: "meditronbyneomedix",
+  storageBucket: "meditronbyneomedix.firebasestorage.app",
+  messagingSenderId: "40313704899",
+  appId: "1:40313704899:web:2ef6351d186d54bd6c2d76",
+  measurementId: "G-1FNCTQC1Q2"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+function login(){
+    let email = document.getElementById("email").value;
+    let password = document.getElementById("password").value;
+
+    firebase.auth().signInWithEmailAndPassword(email, password)
+    .then(()=>{
+        alert("Login Successful!");
+        window.location.href="doctor.html";
+    })
+    .catch(err=>{
+        alert(err.message);
+    });
+
+    let hour = new Date().getHours();
+    let greeting = "";
+
+    if(hour < 12){
+        greeting = "Good Morning Doctor ☀️";
+    }
+    else if(hour < 18){
+        greeting = "Good Afternoon Doctor 🌤️";
+    }
+    else{
+        greeting = "Good Evening Doctor 🌙";
+    }
+
+    document.getElementById("greeting").innerText = greeting;
+}
+
+</script>
+
+</body>
+</html>

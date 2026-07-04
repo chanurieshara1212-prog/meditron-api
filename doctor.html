@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Doctor Dashboard</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+body{
+    margin:0;
+    font-family:'Segoe UI',sans-serif;
+    background:linear-gradient(135deg,#667eea,#764ba2);
+    min-height:100vh;
+    padding:20px;
+}
+h1{color:white;}
+.container{
+    background:rgba(255,255,255,0.1);
+    backdrop-filter:blur(15px);
+    border-radius:20px;
+    padding:20px;
+}
+h3{color:white;}
+
+input,select{
+    padding:10px;
+    width:220px;
+    border-radius:8px;
+    border:none;
+    margin:5px 0;
+}
+button{
+    padding:10px 15px;
+    background:linear-gradient(135deg,#4facfe,#00f2fe);
+    color:white;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+}
+.card{
+    background:white;
+    padding:15px;
+    border-radius:12px;
+    margin:10px;
+}
+.status{
+    padding:5px 10px;
+    border-radius:20px;
+    font-size:12px;
+    color:white;
+}
+.active{background:#2ecc71;}
+.discharged{background:#e74c3c;}
+.sectionTitle{
+    margin-top:20px;
+}
+
+/* ✅ FIXED NAME COLOR */
+.patientName{
+    color:#2c3e50;
+    font-size:20px;
+    font-weight:600;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Doctor Dashboard</h1>
+
+<div class="container">
+
+<h3>Add Patient</h3>
+
+<input type="text" id="name" placeholder="Patient Name"><br><br>
+<input type="number" id="age" placeholder="Age"><br><br>
+
+<select id="gender">
+<option>Male</option>
+<option>Female</option>
+</select><br><br>
+
+<input type="text" id="diagnosis" placeholder="Diagnosis"><br><br>
+
+<button onclick="addPatient()">Add Patient</button>
+
+<hr>
+
+<h3 class="sectionTitle">🟢 Active Patients</h3>
+<div id="activeList"></div>
+
+<h3 class="sectionTitle">🔴 Discharged Patients</h3>
+<div id="dischargedList"></div>
+
+</div>
+
+<script>
+
+const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "meditronbyneomedix.firebaseapp.com",
+  projectId: "meditronbyneomedix"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+
+// ✅ ADD PATIENT
+function addPatient(){
+
+    let name = document.getElementById("name").value.trim();
+    let age = document.getElementById("age").value;
+    let gender = document.getElementById("gender").value;
+    let diagnosis = document.getElementById("diagnosis").value;
+
+    if(name === ""){
+        alert("Enter patient name");
+        return;
+    }
+
+    db.collection("patients").get().then(snapshot=>{
+
+        let maxId = 0;
+
+        snapshot.forEach(doc=>{
+            let data = doc.data();
+            if(data.patient_id > maxId){
+                maxId = data.patient_id;
+            }
+        });
+
+        let newPatientId = maxId + 1;
+
+        db.collection("patients").add({
+            patient_id: newPatientId,
+            name: name,
+            age: age,
+            gender: gender,
+            diagnosis: diagnosis,
+            status: "active"
+        }).then(()=>{
+
+            alert("Patient Added!");
+
+            document.getElementById("name").value="";
+            document.getElementById("age").value="";
+            document.getElementById("diagnosis").value="";
+        });
+
+    });
+}
+
+
+// 🔴 DISCHARGE
+function dischargePatient(docId){
+    db.collection("patients").doc(docId).update({
+        status:"Discharged"
+    });
+}
+
+
+// 📄 PDF
+async function downloadPDF(docId){
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    let patient = await db.collection("patients").doc(docId).get();
+    let p = patient.data();
+
+    doc.text("Meditron Report", 20, 20);
+    doc.text(`Name: ${p.name}`, 20, 40);
+    doc.text(`Age: ${p.age}`, 20, 50);
+    doc.text(`Gender: ${p.gender}`, 20, 60);
+    doc.text(`Diagnosis: ${p.diagnosis}`, 20, 70);
+
+    doc.save(`${p.name}_report.pdf`);
+}
+
+
+// 🔥 LOAD PATIENTS
+function loadPatients(){
+
+    db.collection("patients").onSnapshot(snapshot=>{
+
+        let activeHTML="";
+        let dischargedHTML="";
+
+        snapshot.forEach(doc=>{
+
+            let p = doc.data();
+
+            let statusClass = p.status === "Discharged" ? "discharged" : "active";
+
+            let card = `
+            <div class="card">
+                <h3 class="patientName">${p.name || "No Name"}</h3>
+                <p>ID: ${p.patient_id}</p>
+                <p>Age: ${p.age} | ${p.gender}</p>
+                <p>${p.diagnosis}</p>
+                <span class="status ${statusClass}">${p.status}</span><br><br>
+
+                <button onclick="goToMedication('${doc.id}')">Open</button>
+                <button onclick="dischargePatient('${doc.id}')">Discharge</button>
+                <button onclick="downloadPDF('${doc.id}')">PDF</button>
+            </div>
+            `;
+
+            if(p.status === "Discharged"){
+                dischargedHTML += card;
+            }else{
+                activeHTML += card;
+            }
+
+        });
+
+        document.getElementById("activeList").innerHTML = activeHTML;
+        document.getElementById("dischargedList").innerHTML = dischargedHTML;
+
+    });
+}
+
+
+// 🔗 NAVIGATION
+function goToMedication(docId){
+    window.location.href = "medication.html?id="+docId;
+}
+
+loadPatients();
+
+</script>
+
+</body>
+</html>
